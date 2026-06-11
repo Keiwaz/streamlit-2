@@ -1,5 +1,5 @@
 # streamlit_app_arima_garch_lstm.py
-# Dashboard ARIMA · ARIMA-GARCH · LSTM · ARIMA-GARCH-LSTM — BBCA.JK
+# Dashboard ARIMA · ARIMA-GARCH — BBCA.JK
 # Kevin Imtinan Fawwaz — NIM 1206225037
 
 import streamlit as st
@@ -17,7 +17,7 @@ warnings.filterwarnings('ignore')
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="ARIMA-GARCH-LSTM | BBCA.JK",
+    page_title="ARIMA-GARCH | BBCA.JK",
     page_icon="📈",
     layout="wide"
 )
@@ -50,12 +50,12 @@ with st.sidebar:
         "📐 Identifikasi Ordo (Auto)",
         "🤖 Train & Forecast Semua Model",
         "📋 Evaluasi & Perbandingan",
-        
+
     ], label_visibility="collapsed")
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.title("📈 Forecasting Return Saham BBCA.JK")
-st.caption("ARIMA · ARIMA-GARCH · LSTM · ARIMA-GARCH-LSTM | Kevin Imtinan Fawwaz — 1206225037")
+st.caption("ARIMA · ARIMA-GARCH | Kevin Imtinan Fawwaz — 1206225037")
 
 
 # ── Helper metrik ──────────────────────────────────────────────────────────────
@@ -94,9 +94,9 @@ def load_data():
     val   = data.iloc[int(n*0.80):int(n*0.90)].copy()
     test  = data.iloc[int(n*0.90):].copy()
     return data, train, val, test, close_col
-    
+
 data, train, val, test, close_col = load_data()
-test_steps = len(test) 
+test_steps = len(test)
 # =============================================================================
 # HALAMAN 1 — Data & EDA
 # =============================================================================
@@ -417,33 +417,11 @@ elif selected_menu == "🤖 Train & Forecast Semua Model":
 
     st.info(f"Ordo yang digunakan: **ARIMA{best_arima_order}** · **GARCH{best_garch_order}**")
 
-    # ── Konfigurasi LSTM ───────────────────────────────────────────────────────
-    with st.expander("⚙️ Konfigurasi LSTM", expanded=False):
-        SEQ_LENGTH = st.number_input("Sequence Length", 5, 60, 20, step=5)
-        EPOCHS     = st.number_input("Max Epochs",  20, 500, 200, step=20)
-        BATCH_SIZE = st.selectbox("Batch Size", [8, 16, 32, 64], index=1)
-        PATIENCE   = st.number_input("Early Stopping Patience", 5, 50, 20)
-        ALPHA_DIR  = st.slider("Directional Loss α", 0.0, 1.0, 0.3, step=0.05)
-
     run_all = st.button("🚀 Jalankan Training & Forecasting Semua Model", type="primary")
 
     if run_all:
-        import tensorflow as tf
-        from tensorflow.keras.models import Sequential
-        from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
-        from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-        from tensorflow.keras.optimizers import Adam
-        import tensorflow.keras.backend as K
-        from sklearn.preprocessing import StandardScaler
         from statsmodels.tsa.arima.model import ARIMA as ARIMA_model
         from arch import arch_model as arch_model_fn
-
-        tf.random.set_seed(SEED)
-
-        def directional_mse_loss(y_true, y_pred, alpha=ALPHA_DIR):
-            mse          = K.mean(K.square(y_true - y_pred))
-            sign_penalty = K.mean(K.maximum(0.0, -y_true * y_pred))
-            return mse + alpha * sign_penalty
 
         test_raw = test['Return_raw'].values
         full_ret_train_val = pd.concat([train['Return'], val['Return']])
@@ -489,209 +467,11 @@ elif selected_menu == "🤖 Train & Forecast Semua Model":
         m_ag = calc_metrics(test_raw, forecast_ag)
         st.success(f"ARIMA-GARCH selesai — RMSE={m_ag['RMSE']:.6f}  DA={m_ag['DA']:.1f}%")
 
-        # ─────────────────────────────────────────────────────────────────────
-        # MODEL 3: LSTM
-        # ─────────────────────────────────────────────────────────────────────
-        st.subheader("3️⃣ LSTM — Training & Forecasting")
-
-        # Preprocessing
-        train_pct = train['Return'].values * 100
-        val_pct   = val['Return'].values   * 100
-        scaler_lstm = StandardScaler()
-        train_sc    = scaler_lstm.fit_transform(train_pct.reshape(-1, 1))
-        val_sc      = scaler_lstm.transform(val_pct.reshape(-1, 1))
-
-        def make_seq_1d(arr, seq):
-            X, y = [], []
-            for i in range(len(arr) - seq):
-                X.append(arr[i:i+seq]); y.append(arr[i+seq])
-            return np.array(X), np.array(y)
-
-        X_tr, y_tr = make_seq_1d(train_sc, SEQ_LENGTH)
-        X_vl, y_vl = make_seq_1d(val_sc,   SEQ_LENGTH)
-
-        model_lstm = Sequential([
-            LSTM(64, activation='tanh', recurrent_activation='sigmoid',
-                 return_sequences=True, input_shape=(SEQ_LENGTH, 1), dropout=0.1),
-            LSTM(32, activation='tanh', recurrent_activation='sigmoid',
-                 return_sequences=False, dropout=0.1),
-            BatchNormalization(),
-            Dense(16, activation='tanh'),
-            Dropout(0.1),
-            Dense(1, activation='linear')
-        ], name='LSTM_Model')
-        model_lstm.compile(optimizer=Adam(1e-3), loss=directional_mse_loss, metrics=['mae'])
-
-        cb_lstm = [
-            EarlyStopping(monitor='val_loss', patience=PATIENCE, restore_best_weights=True, verbose=0),
-            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=10, min_lr=1e-6, verbose=0)
-        ]
-        with st.spinner("Training LSTM..."):
-            hist_lstm = model_lstm.fit(X_tr, y_tr, validation_data=(X_vl, y_vl),
-                                       epochs=EPOCHS, batch_size=BATCH_SIZE,
-                                       callbacks=cb_lstm, verbose=0)
-        best_ep_lstm = int(np.argmin(hist_lstm.history['val_loss'])) + 1
-        st.info(f"LSTM trained — best epoch: {best_ep_lstm}  val_loss: {min(hist_lstm.history['val_loss']):.6f}")
-
-        # Forecast LSTM
-        all_pct_lstm = np.concatenate([train_pct, val_pct, test['Return'].values*100])
-        all_sc_lstm  = scaler_lstm.transform(all_pct_lstm.reshape(-1,1)).flatten()
-        offset_lstm  = len(train) + len(val)
-        forecast_lstm = []
-        for i in range(test_steps):
-            win  = all_sc_lstm[offset_lstm - SEQ_LENGTH + i: offset_lstm + i].reshape(1, SEQ_LENGTH, 1)
-            pred = float(scaler_lstm.inverse_transform(model_lstm.predict(win, verbose=0))[0, 0])
-            forecast_lstm.append(pred / 100)
-        forecast_lstm = np.array(forecast_lstm)
-        m_lstm = calc_metrics(test_raw, forecast_lstm)
-        st.success(f"LSTM selesai — RMSE={m_lstm['RMSE']:.6f}  DA={m_lstm['DA']:.1f}%")
-
-        # ─────────────────────────────────────────────────────────────────────
-        # MODEL 4: ARIMA-GARCH-LSTM (3 fitur)
-        # ─────────────────────────────────────────────────────────────────────
-        st.subheader("4️⃣ ARIMA-GARCH-LSTM — Training & Forecasting")
-
-        # Fitur training: return + ŷ_ARIMA + σ²_GARCH
-        arima_for_gl  = ARIMA_model(train['Return'], order=best_arima_order).fit()
-        fitted_arima  = arima_for_gl.fittedvalues
-        resid_for_gl  = arima_for_gl.resid * 100
-        garch_for_gl  = arch_model_fn(resid_for_gl, vol='Garch',
-                                       p=best_garch_order[0], q=best_garch_order[1],
-                                       dist='normal', rescale=False).fit(disp='off')
-        cvar_train_gl = (garch_for_gl.conditional_volatility ** 2) / 10000
-
-        # Rolling val fitur
-        st.info(f"Rolling refit ARIMA-GARCH untuk validation set ({len(val)} langkah)...")
-        prog_val = st.progress(0)
-        val_yhat_list, val_cv_list = [], []
-        val_hist_gl = list(train['Return'].values)
-        for i in range(len(val)):
-            av = ARIMA_model(val_hist_gl, order=best_arima_order).fit()
-            fc_v = av.forecast(steps=1)
-            val_yhat_list.append(float(fc_v.iloc[0]) if hasattr(fc_v, 'iloc') else float(fc_v[0]))
-            rv = av.resid * 100
-            gv = arch_model_fn(rv, vol='Garch', p=best_garch_order[0], q=best_garch_order[1],
-                               dist='normal', rescale=False).fit(disp='off')
-            val_cv_list.append((float(gv.conditional_volatility[-1]) ** 2) / 10000)
-            val_hist_gl.append(val['Return'].values[i])
-            prog_val.progress(int((i+1)/len(val)*100))
-        val_yhat = np.array(val_yhat_list)
-        val_cvar = np.array(val_cv_list)
-
-        # Scalers
-        sc_ret  = StandardScaler(); sc_yh = StandardScaler()
-        sc_cv   = StandardScaler(); sc_y  = StandardScaler()
-        tr_pct  = train['Return'].values * 100
-        vl_pct  = val['Return'].values   * 100
-        yh_tr   = (fitted_arima.values if hasattr(fitted_arima, 'values') else fitted_arima) * 100
-        yh_vl   = val_yhat * 100
-
-        feat_tr = np.hstack([sc_ret.fit_transform(tr_pct.reshape(-1,1)),
-                              sc_yh.fit_transform(yh_tr.reshape(-1,1)),
-                              sc_cv.fit_transform(np.array(cvar_train_gl).reshape(-1,1))])
-        feat_vl = np.hstack([sc_ret.transform(vl_pct.reshape(-1,1)),
-                              sc_yh.transform(yh_vl.reshape(-1,1)),
-                              sc_cv.transform(np.array(val_cvar).reshape(-1,1))])
-        y_tr_sc = sc_y.fit_transform(tr_pct.reshape(-1,1))
-        y_vl_sc = sc_y.transform(vl_pct.reshape(-1,1))
-
-        def make_seq_2d(X_feat, y_target, seq):
-            X, y = [], []
-            for i in range(len(X_feat) - seq):
-                X.append(X_feat[i:i+seq]); y.append(y_target[i+seq])
-            return np.array(X), np.array(y)
-
-        X_tr_gl, y_tr_gl = make_seq_2d(feat_tr, y_tr_sc,  SEQ_LENGTH)
-        X_vl_gl, y_vl_gl = make_seq_2d(feat_vl, y_vl_sc, SEQ_LENGTH)
-
-        model_gl = Sequential([
-            LSTM(64, activation='tanh', recurrent_activation='sigmoid',
-                 return_sequences=True, input_shape=(SEQ_LENGTH, 3), dropout=0.1),
-            LSTM(32, activation='tanh', recurrent_activation='sigmoid',
-                 return_sequences=False, dropout=0.1),
-            BatchNormalization(),
-            Dense(16, activation='tanh'),
-            Dropout(0.1),
-            Dense(1, activation='linear')
-        ], name='ARIMA_GARCH_LSTM_Model')
-        model_gl.compile(optimizer=Adam(1e-3), loss=directional_mse_loss, metrics=['mae'])
-
-        cb_gl = [
-            EarlyStopping(monitor='val_loss', patience=PATIENCE, restore_best_weights=True, verbose=0),
-            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=10, min_lr=1e-6, verbose=0)
-        ]
-        with st.spinner("Training ARIMA-GARCH-LSTM..."):
-            hist_gl = model_gl.fit(X_tr_gl, y_tr_gl, validation_data=(X_vl_gl, y_vl_gl),
-                                   epochs=EPOCHS, batch_size=BATCH_SIZE,
-                                   callbacks=cb_gl, verbose=0)
-        best_ep_gl = int(np.argmin(hist_gl.history['val_loss'])) + 1
-        st.info(f"ARIMA-GARCH-LSTM trained — best epoch: {best_ep_gl}  val_loss: {min(hist_gl.history['val_loss']):.6f}")
-
-        # Rolling test fitur
-        st.info(f"Rolling refit ARIMA-GARCH untuk test set ({test_steps} langkah)...")
-        prog_test = st.progress(0)
-        tst_yhat_list, tst_cv_list = [], []
-        tst_hist_gl = list(full_ret_train_val.values)
-        for i in range(test_steps):
-            at = ARIMA_model(tst_hist_gl, order=best_arima_order).fit()
-            fc_t = at.forecast(steps=1)
-            tst_yhat_list.append(float(fc_t.iloc[0]) if hasattr(fc_t, 'iloc') else float(fc_t[0]))
-            rt = at.resid * 100
-            gt = arch_model_fn(rt, vol='Garch', p=best_garch_order[0], q=best_garch_order[1],
-                               dist='normal', rescale=False).fit(disp='off')
-            tst_cv_list.append((float(gt.conditional_volatility[-1]) ** 2) / 10000)
-            tst_hist_gl.append(test['Return'].values[i])
-            prog_test.progress(int((i+1)/test_steps*100))
-        tst_yhat = np.array(tst_yhat_list)
-        tst_cvar = np.array(tst_cv_list)
-
-        # Susun semua fitur & prediksi
-        all_ret_pct  = np.concatenate([tr_pct, vl_pct, test['Return'].values*100])
-        all_yhat_pct = np.concatenate([yh_tr, yh_vl, tst_yhat*100])
-        all_cvar     = np.concatenate([cvar_train_gl, val_cvar, tst_cvar])
-
-        all_ret_sc  = sc_ret.transform(all_ret_pct.reshape(-1,1)).flatten()
-        all_yhat_sc = sc_yh.transform(all_yhat_pct.reshape(-1,1)).flatten()
-        all_cv_sc   = sc_cv.transform(all_cvar.reshape(-1,1)).flatten()
-        offset_gl   = len(train) + len(val)
-
-        forecast_gl = []
-        for i in range(test_steps):
-            win = np.column_stack([
-                all_ret_sc [offset_gl - SEQ_LENGTH + i: offset_gl + i],
-                all_yhat_sc[offset_gl - SEQ_LENGTH + i: offset_gl + i],
-                all_cv_sc  [offset_gl - SEQ_LENGTH + i: offset_gl + i],
-            ]).reshape(1, SEQ_LENGTH, 3)
-            pred_pct = float(sc_y.inverse_transform(model_gl.predict(win, verbose=0))[0, 0])
-            forecast_gl.append(pred_pct / 100)
-        forecast_gl = np.array(forecast_gl)
-        m_gl = calc_metrics(test_raw, forecast_gl)
-        st.success(f"ARIMA-GARCH-LSTM selesai — RMSE={m_gl['RMSE']:.6f}  DA={m_gl['DA']:.1f}%")
-
         # ── Simpan semua ke session state ──────────────────────────────────────
         st.session_state.update({
             'forecast_arima': forecast_arima, 'm_arima': m_arima,
             'forecast_ag':    forecast_ag,    'm_ag':    m_ag,
-            'forecast_lstm':  forecast_lstm,  'm_lstm':  m_lstm,
-            'forecast_gl':    forecast_gl,    'm_gl':    m_gl,
             'test_raw':       test_raw,
-            'hist_lstm_loss': hist_lstm.history,
-            'hist_gl_loss':   hist_gl.history,
-            'best_ep_lstm':   best_ep_lstm,
-            'best_ep_gl':     best_ep_gl,
-            'model_lstm':     model_lstm,
-            'model_gl':       model_gl,
-            'scaler_lstm':    scaler_lstm,
-            'sc_y_gl':        sc_y,
-            'sc_ret_gl':      sc_ret,
-            'sc_yh_gl':       sc_yh,
-            'sc_cv_gl':       sc_cv,
-            'all_ret_pct_gl': all_ret_pct,
-            'all_yhat_pct_gl':all_yhat_pct,
-            'all_cvar_gl':    all_cvar,
-            'arima_for_gl':   arima_for_gl,
-            'garch_for_gl':   garch_for_gl,
-            'SEQ_LENGTH':     SEQ_LENGTH,
         })
         st.balloons()
         st.success("✅ Semua model selesai! Lanjut ke halaman **📋 Evaluasi & Perbandingan**.")
@@ -717,12 +497,8 @@ elif selected_menu == "📋 Evaluasi & Perbandingan":
     best_garch_order = st.session_state['best_garch_order']
     forecast_arima = st.session_state['forecast_arima']
     forecast_ag    = st.session_state['forecast_ag']
-    forecast_lstm  = st.session_state['forecast_lstm']
-    forecast_gl    = st.session_state['forecast_gl']
     m_arima = st.session_state['m_arima']
     m_ag    = st.session_state['m_ag']
-    m_lstm  = st.session_state['m_lstm']
-    m_gl    = st.session_state['m_gl']
     test_raw = st.session_state['test_raw']
 
     # ── Tabel ringkasan ────────────────────────────────────────────────────────
@@ -730,8 +506,6 @@ elif selected_menu == "📋 Evaluasi & Perbandingan":
     model_labels = {
         f'ARIMA{best_arima_order}': m_arima,
         f'ARIMA{best_arima_order}-GARCH{best_garch_order}': m_ag,
-        'LSTM': m_lstm,
-        f'ARIMA{best_arima_order}-GARCH{best_garch_order}-LSTM': m_gl,
     }
     rows = [{'Model': k,
              'RMSE':    round(v['RMSE'],   6),
@@ -769,12 +543,10 @@ elif selected_menu == "📋 Evaluasi & Perbandingan":
     all_forecasts = {
         f'ARIMA{best_arima_order}': (forecast_arima, 'steelblue'),
         f'ARIMA{best_arima_order}-GARCH{best_garch_order}': (forecast_ag, 'darkorange'),
-        'LSTM': (forecast_lstm, 'purple'),
-        f'ARIMA{best_arima_order}-GARCH{best_garch_order}-LSTM': (forecast_gl, 'crimson'),
     }
     fig_fc, ax_fc = plt.subplots(figsize=(15, 5))
     ax_fc.plot(test.index, test_raw, color='black', lw=2, label='Aktual', zorder=5)
-    ls_list = ['-', '--', '-.', ':']
+    ls_list = ['-', '--']
     for idx, (name, (fc, col)) in enumerate(all_forecasts.items()):
         m = model_labels[name]
         ax_fc.plot(test.index, fc, color=col, lw=1.2, ls=ls_list[idx], alpha=0.85,
@@ -816,23 +588,7 @@ elif selected_menu == "📋 Evaluasi & Perbandingan":
 
     st.divider()
 
-    # ── Training history LSTM ──────────────────────────────────────────────────
-    st.subheader("🏋️ Training History LSTM")
-    h_lstm = st.session_state['hist_lstm_loss']
-    h_gl   = st.session_state['hist_gl_loss']
-    fig_h, axes_h = plt.subplots(1, 2, figsize=(13, 4))
-    axes_h[0].plot(h_lstm['loss'], label='Train'); axes_h[0].plot(h_lstm['val_loss'], label='Val')
-    axes_h[0].axvline(st.session_state['best_ep_lstm']-1, color='red', ls='--', lw=1,
-                      label=f"Best ep={st.session_state['best_ep_lstm']}")
-    axes_h[0].set_title('LSTM Loss'); axes_h[0].legend()
-    axes_h[1].plot(h_gl['loss'], label='Train'); axes_h[1].plot(h_gl['val_loss'], label='Val')
-    axes_h[1].axvline(st.session_state['best_ep_gl']-1, color='red', ls='--', lw=1,
-                      label=f"Best ep={st.session_state['best_ep_gl']}")
-    axes_h[1].set_title('ARIMA-GARCH-LSTM Loss'); axes_h[1].legend()
-    plt.suptitle('Training History', fontweight='bold'); plt.tight_layout(); st.pyplot(fig_h)
-
     # ── Konversi ke harga & tabel harga ───────────────────────────────────────
-    st.divider()
     st.subheader("💰 Konversi Prediksi Return → Harga")
     st.latex(r"\hat{P}_t = P_{t-1} \times e^{\hat{r}_t}")
 
@@ -869,7 +625,7 @@ elif selected_menu == "📋 Evaluasi & Perbandingan":
     # Plot harga gabungan
     fig_ph, ax_ph = plt.subplots(figsize=(15, 5))
     ax_ph.plot(test.index, price_actual, color='black', lw=2, label='Harga Aktual', zorder=5)
-    _pcols = ['steelblue', 'darkorange', 'purple', 'crimson']
+    _pcols = ['steelblue', 'darkorange']
     for (name, pp), col in zip(price_fc.items(), _pcols):
         ax_ph.plot(test.index, pp, color=col, lw=1.2, ls='--', alpha=0.85, label=name)
     ax_ph.set_title('Prediksi Harga BBCA — Semua Model (Test Set)', fontweight='bold')
@@ -884,9 +640,7 @@ elif selected_menu == "📋 Evaluasi & Perbandingan":
     export_df = pd.DataFrame({'Date': test.index.strftime('%Y-%m-%d'),
                                'Actual_Return': test_raw,
                                'ARIMA': forecast_arima,
-                               'ARIMA_GARCH': forecast_ag,
-                               'LSTM': forecast_lstm,
-                               'ARIMA_GARCH_LSTM': forecast_gl})
+                               'ARIMA_GARCH': forecast_ag})
     st.download_button("⬇️ Download Forecast Return (CSV)",
                        export_df.to_csv(index=False).encode(),
                        "forecast_return_results.csv", "text/csv")
