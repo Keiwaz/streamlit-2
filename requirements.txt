@@ -1,0 +1,10 @@
+streamlit
+pandas
+numpy
+matplotlib
+statsmodels
+arch
+pmdarima
+tensorflow==2.15.1
+scikit-learn
+scipy
