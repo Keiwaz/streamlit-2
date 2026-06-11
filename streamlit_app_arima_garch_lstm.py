@@ -442,6 +442,20 @@ elif selected_menu == "🤖 Train & Forecast Semua Model":
         forecast_arima = np.array(forecast_arima)
         m_arima = calc_metrics(test_raw, forecast_arima)
         st.success(f"ARIMA selesai — RMSE={m_arima['RMSE']:.6f}  DA={m_arima['DA']:.1f}%")
+        st.dataframe(pd.DataFrame([{
+            'RMSE': round(m_arima['RMSE'], 6), 'MAE': round(m_arima['MAE'], 6),
+            'DA(%)': round(m_arima['DA'], 2), 'Theil U': round(m_arima['TheilU'], 4),
+            'MAPE(%)': round(m_arima['MAPE'], 4),
+        }]), use_container_width=True)
+        fig_a1, ax_a1 = plt.subplots(figsize=(13, 4))
+        ax_a1.plot(test.index, test_raw, color='black', lw=1.5, label='Aktual')
+        ax_a1.plot(test.index, forecast_arima, color='steelblue', lw=1, ls='--', alpha=0.85,
+                   label=f'ARIMA{best_arima_order}')
+        ax_a1.axhline(0, color='k', lw=0.4, ls='--')
+        ax_a1.set_title(f'Forecast ARIMA{best_arima_order} vs Aktual (Test Set)', fontweight='bold')
+        ax_a1.set_ylabel('Log Return'); ax_a1.set_xlabel('Tanggal')
+        ax_a1.legend(fontsize=9)
+        plt.tight_layout(); st.pyplot(fig_a1)
 
         # ─────────────────────────────────────────────────────────────────────
         # MODEL 2: ARIMA-GARCH — One-Step Ahead
@@ -466,6 +480,20 @@ elif selected_menu == "🤖 Train & Forecast Semua Model":
         forecast_ag = np.array(forecast_ag)
         m_ag = calc_metrics(test_raw, forecast_ag)
         st.success(f"ARIMA-GARCH selesai — RMSE={m_ag['RMSE']:.6f}  DA={m_ag['DA']:.1f}%")
+        st.dataframe(pd.DataFrame([{
+            'RMSE': round(m_ag['RMSE'], 6), 'MAE': round(m_ag['MAE'], 6),
+            'DA(%)': round(m_ag['DA'], 2), 'Theil U': round(m_ag['TheilU'], 4),
+            'MAPE(%)': round(m_ag['MAPE'], 4),
+        }]), use_container_width=True)
+        fig_ag1, ax_ag1 = plt.subplots(figsize=(13, 4))
+        ax_ag1.plot(test.index, test_raw, color='black', lw=1.5, label='Aktual')
+        ax_ag1.plot(test.index, forecast_ag, color='darkorange', lw=1, ls='--', alpha=0.85,
+                    label=f'ARIMA{best_arima_order}-GARCH{best_garch_order}')
+        ax_ag1.axhline(0, color='k', lw=0.4, ls='--')
+        ax_ag1.set_title(f'Forecast ARIMA{best_arima_order}-GARCH{best_garch_order} vs Aktual (Test Set)', fontweight='bold')
+        ax_ag1.set_ylabel('Log Return'); ax_ag1.set_xlabel('Tanggal')
+        ax_ag1.legend(fontsize=9)
+        plt.tight_layout(); st.pyplot(fig_ag1)
 
         # ── Simpan semua ke session state ──────────────────────────────────────
         st.session_state.update({
@@ -477,8 +505,47 @@ elif selected_menu == "🤖 Train & Forecast Semua Model":
         st.success("✅ Semua model selesai! Lanjut ke halaman **📋 Evaluasi & Perbandingan**.")
 
     elif 'forecast_arima' in st.session_state:
-        st.success("✅ Model sudah dijalankan sebelumnya. "
-                   "Buka **📋 Evaluasi & Perbandingan** untuk melihat hasilnya.")
+        forecast_arima = st.session_state['forecast_arima']
+        forecast_ag    = st.session_state['forecast_ag']
+        m_arima  = st.session_state['m_arima']
+        m_ag     = st.session_state['m_ag']
+        test_raw = st.session_state['test_raw']
+
+        st.subheader("1️⃣ ARIMA — Hasil Forecast")
+        st.dataframe(pd.DataFrame([{
+            'RMSE': round(m_arima['RMSE'], 6), 'MAE': round(m_arima['MAE'], 6),
+            'DA(%)': round(m_arima['DA'], 2), 'Theil U': round(m_arima['TheilU'], 4),
+            'MAPE(%)': round(m_arima['MAPE'], 4),
+        }]), use_container_width=True)
+        fig_a2, ax_a2 = plt.subplots(figsize=(13, 4))
+        ax_a2.plot(test.index, test_raw, color='black', lw=1.5, label='Aktual')
+        ax_a2.plot(test.index, forecast_arima, color='steelblue', lw=1, ls='--', alpha=0.85,
+                   label=f'ARIMA{best_arima_order}')
+        ax_a2.axhline(0, color='k', lw=0.4, ls='--')
+        ax_a2.set_title(f'Forecast ARIMA{best_arima_order} vs Aktual (Test Set)', fontweight='bold')
+        ax_a2.set_ylabel('Log Return'); ax_a2.set_xlabel('Tanggal')
+        ax_a2.legend(fontsize=9)
+        plt.tight_layout(); st.pyplot(fig_a2)
+
+        st.divider()
+
+        st.subheader("2️⃣ ARIMA-GARCH — Hasil Forecast")
+        st.dataframe(pd.DataFrame([{
+            'RMSE': round(m_ag['RMSE'], 6), 'MAE': round(m_ag['MAE'], 6),
+            'DA(%)': round(m_ag['DA'], 2), 'Theil U': round(m_ag['TheilU'], 4),
+            'MAPE(%)': round(m_ag['MAPE'], 4),
+        }]), use_container_width=True)
+        fig_ag2, ax_ag2 = plt.subplots(figsize=(13, 4))
+        ax_ag2.plot(test.index, test_raw, color='black', lw=1.5, label='Aktual')
+        ax_ag2.plot(test.index, forecast_ag, color='darkorange', lw=1, ls='--', alpha=0.85,
+                    label=f'ARIMA{best_arima_order}-GARCH{best_garch_order}')
+        ax_ag2.axhline(0, color='k', lw=0.4, ls='--')
+        ax_ag2.set_title(f'Forecast ARIMA{best_arima_order}-GARCH{best_garch_order} vs Aktual (Test Set)', fontweight='bold')
+        ax_ag2.set_ylabel('Log Return'); ax_ag2.set_xlabel('Tanggal')
+        ax_ag2.legend(fontsize=9)
+        plt.tight_layout(); st.pyplot(fig_ag2)
+
+        st.info("Buka **📋 Evaluasi & Perbandingan** untuk perbandingan lengkap semua model.")
     else:
         st.info("Klik tombol di atas untuk memulai training semua model secara otomatis.")
 
